@@ -62,12 +62,6 @@ def test_create_and_list_task(client: TestClient) -> None:
     assert client.get("/tasks").json() == [created]
 
 
-def test_create_task_rejects_blank_name(client: TestClient) -> None:
-    response = client.post("/tasks", json={"name": "   "})
-
-    assert response.status_code == 422
-
-
 def test_get_task(client: TestClient) -> None:
     created = create_task(client)
 
@@ -149,17 +143,52 @@ def test_update_missing_task_returns_404(client: TestClient) -> None:
 
 
 @pytest.mark.parametrize(
-    "name",
+    "patch",
     [
-        "",
-        "   ",
-        "A" * 201,  # Maximum name length is 200 characters.
+        {"name": ""},
+        {"name": "   "},
+        {"name": "A" * 201},
+        {"completed": "not-a-boolean"},
     ],
 )
-def test_create_rejects_invalid_name(client: TestClient, name: str) -> None:
-    response = client.post("/tasks", json={"name": name})
+def test_update_rejects_invalid_fields(client: TestClient, patch: dict) -> None:
+    created = create_task(client)
+
+    response = client.patch(f"/tasks/{created['id']}", json=patch)
 
     assert response.status_code == 422
+    assert client.get(f"/tasks/{created['id']}").json() == created
+
+
+def test_update_invalid_uuid_returns_422(client: TestClient) -> None:
+    response = client.patch("/tasks/not-a-uuid", json={"completed": True})
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {},
+        {"name": None},
+        {"name": 123},
+        {"name": ["task"]},
+        {"name": ""},
+        {"name": "   "},
+        {"name": "A" * 201},  # Maximum name length is 200 characters.
+    ],
+)
+def test_create_rejects_invalid_payload(client: TestClient, payload: dict) -> None:
+    response = client.post("/tasks", json=payload)
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("name", ["A", "A" * 200])
+def test_create_accepts_name_length_boundaries(client: TestClient, name: str) -> None:
+    created = create_task(client, name=name)
+
+    assert created["name"] == name
 
 
 def test_create_strips_whitespace(client: TestClient) -> None:
